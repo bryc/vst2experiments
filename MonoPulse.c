@@ -28,7 +28,7 @@ typedef struct {
 
 typedef struct {
     AEffect eff;
-    float phase, baseStep, step, pitchBend, pulseWidth;
+    float phase, step, baseStep, pitchBend, pulseWidth;
     uint8_t active, note;
 } Plugin;
 
