@@ -28,7 +28,7 @@ typedef struct {
 
 typedef struct {
     AEffect eff;
-    float phase, baseStep, step;
+    float phase, baseStep, step, pitchBend;
     uint8_t active, note;
 } Plugin;
 
@@ -37,7 +37,7 @@ static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
     
     for (int i = 0; i < blockSize; i++) {
         if (p->active) {
-            p->step = p->baseStep * exp2f((p->note - 69) / 12.0f);
+            p->step = p->baseStep * exp2f((p->note - 69 + p->pitchBend) / 12.0f);
             outs[0][i] = outs[1][i] = (p->phase < 0.5f) ? 0.1f : -0.1f;
             
             p->phase += p->step;
@@ -65,6 +65,10 @@ static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, 
                 p->note = LSB;
             } else if ((status == 0x80 || status == 0x90) && LSB == p->note)  {
                 p->active = 0; // Note Off
+            } else if(status == 0xE0) { /* Pitch bend */
+                uint16_t pitchBendRaw = (MSB << 7) | LSB;
+                float pitchBendNorm = (pitchBendRaw - 8192) / 8192.0f;
+                p->pitchBend = pitchBendNorm * 12.0f;
             }
         }
     }
