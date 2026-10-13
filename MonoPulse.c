@@ -28,9 +28,19 @@ typedef struct {
 
 typedef struct {
     AEffect eff;
-    float phase, baseStep, step, pitchBend;
+    float phase, baseStep, step, pitchBend, pulseWidth;
     uint8_t active, note;
 } Plugin;
+
+static void setParam(AEffect *e, int32_t idx, float val) {
+    Plugin *p = (Plugin *)e;
+    if (idx == 0) p->pulseWidth = val;
+}
+
+static float getParam(AEffect *e, int32_t idx) {
+    Plugin *p = (Plugin *)e;
+    return idx == 0 ? p->pulseWidth : 0.0f;
+}
 
 static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
     Plugin *p = (Plugin *)e;
@@ -38,7 +48,7 @@ static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
     for (int i = 0; i < blockSize; i++) {
         if (p->active) {
             p->step = p->baseStep * exp2f((p->note - 69 + p->pitchBend) / 12.0f);
-            outs[0][i] = outs[1][i] = (p->phase < 0.5f) ? 0.1f : -0.1f;
+            outs[0][i] = outs[1][i] = (p->phase < p->pulseWidth) ? 0.1f : -0.1f;
 
             p->phase += p->step;
             if (p->phase >= 1.0f) p->phase -= 1.0f;
@@ -50,7 +60,7 @@ static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
 
 static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, void *ptr, float opt) {
     Plugin *p = (Plugin *)e;
-    
+
     switch (opCode) {
     case 25: {
         VstEvents *ve = (VstEvents *)ptr;
@@ -63,15 +73,20 @@ static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, 
             if (status == 0x90 && MSB > 0) {
                 p->active = 1; // Note On
                 p->note = LSB;
-            } else if ((status == 0x80 || status == 0x90) && LSB == p->note)  {
+            } else if ((status == 0x80 || status == 0x90) && LSB == p->note) {
                 p->active = 0; // Note Off
-            } else if(status == 0xE0) { /* Pitch bend */
+            } else if (status == 0xE0) { // Pitch bend
                 uint16_t pitchBendRaw = (MSB << 7) | LSB;
                 float pitchBendNorm = (pitchBendRaw - 8192) / 8192.0f;
                 p->pitchBend = pitchBendNorm * 12.0f;
             }
         }
+        return 1;
     }
+    case 8:
+        if (idx == 0) strcpy(ptr, "PulseWidth");
+        return idx == 0;
+    case 26: return idx == 0; // effCanBeAutomated
     case 51: return !strcmp(ptr, "receiveVstMidiEvent");
     default: return 0;
     }
@@ -83,10 +98,14 @@ AEffect *VSTPluginMain() {
     p->eff.magic            = 0x56737450;
     p->eff.dispatcher       = dispatch;
     p->eff.processReplacing = process;
+    p->eff.setParameter     = setParam;
+    p->eff.getParameter     = getParam;
     p->eff.flags            = 16 | 256;
     p->eff.numOutputs       = 2;
+    p->eff.numParams        = 1;
 
     p->baseStep = 440.0f / 44100.0f;
+    p->pulseWidth = 0.5f;
 
     return &p->eff;
 }
