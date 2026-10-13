@@ -39,7 +39,7 @@ AEffect *VSTPluginMain() {
     p->eff.magic            = 0x56737450;
     p->eff.dispatcher       = dispatch;
     p->eff.processReplacing = process;
-    p->eff.flags            = 16;
+    p->eff.flags            = 16 | 256;
     p->eff.numOutputs       = 2;
 
     return &p->eff;
