@@ -17,6 +17,6 @@ Generally using this command to build the plugins:
 
 ```bash
 gcc -shared -s -O3 TestTone.c -o TestTone.dll
-# -s and -O3 are optional, "strip" and "optimize": just keeps file size down for production basically. 
+# -s and -O3 are optional, "strip" and "optimize": keeps filesize down for production basically
 # -fPIC is potentially necessary for Linux builds. Will look into it later.
 ```
