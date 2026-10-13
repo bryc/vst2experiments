@@ -63,7 +63,7 @@ static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, 
             if (status == 0x90) {
                 p->active = 1; // Note On
                 p->note = LSB;
-            } else if (status == 0x80 || status == 0x90)  {
+            } else if ((status == 0x80 || status == 0x90) && LSB == p->note)  {
                 p->active = 0; // Note Off
             }
         }
