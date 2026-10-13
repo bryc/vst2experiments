@@ -34,12 +34,12 @@ typedef struct {
 
 static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
     Plugin *p = (Plugin *)e;
-    
+
     for (int i = 0; i < blockSize; i++) {
         if (p->active) {
             p->step = p->baseStep * exp2f((p->note - 69 + p->pitchBend) / 12.0f);
             outs[0][i] = outs[1][i] = (p->phase < 0.5f) ? 0.1f : -0.1f;
-            
+
             p->phase += p->step;
             if (p->phase >= 1.0f) p->phase -= 1.0f;
         } else {
@@ -59,8 +59,8 @@ static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, 
             if (evt->type != 1) continue; // Only process MIDI type events
 
             uint8_t status = evt->data[0] & 0xF0, LSB = evt->data[1], MSB = evt->data[2];
-            
-            if (status == 0x90) {
+
+            if (status == 0x90 && MSB > 0) {
                 p->active = 1; // Note On
                 p->note = LSB;
             } else if ((status == 0x80 || status == 0x90) && LSB == p->note)  {
