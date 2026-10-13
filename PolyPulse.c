@@ -1,0 +1,125 @@
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+
+typedef struct {
+    int32_t magic;
+    void *dispatcher, *process, *setParameter, *getParameter;
+    int32_t numPrograms, numParams, numInputs, numOutputs, flags;
+    intptr_t reserved1, reserved2;
+    int32_t initialDelay, realQualities, offQualities;
+    float ioRatio;
+    void *object, *user;
+    int32_t uniqueId, version;
+    void *processReplacing;
+} AEffect;
+
+typedef struct {
+    int32_t type, byteSize, deltaFrames, flags, noteLength, noteOffset;
+    uint8_t data[4];
+} VstMidiEvent;
+
+typedef struct {
+    int32_t numEvents;
+    intptr_t reserved;
+    void *events[];
+} VstEvents;
+
+typedef struct {
+    AEffect eff;
+    float phase[4], step[4], baseStep, pitchBend, pulseWidth;
+    uint8_t active[4], note[4], velocity[4];
+} Plugin;
+
+static void setParam(AEffect *e, int32_t idx, float val) {
+    Plugin *p = (Plugin *)e;
+    if (idx == 0) p->pulseWidth = val;
+}
+
+static float getParam(AEffect *e, int32_t idx) {
+    Plugin *p = (Plugin *)e;
+    return idx == 0 ? p->pulseWidth : 0.0f;
+}
+
+static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
+    Plugin *p = (Plugin *)e;
+
+    for (int i = 0; i < blockSize; i++) {
+        float sample = 0.0f;
+
+        for (int v = 0; v < 4; v++) {
+            if (p->active[v]) {
+                p->step[v] = p->baseStep * exp2f((p->note[v] - 69 + p->pitchBend) / 12.0f);
+                sample += ((p->phase[v] < p->pulseWidth) ? 0.1f : -0.1f) * (p->velocity[v] / 127.0f);
+                p->phase[v] += p->step[v];
+                if (p->phase[v] >= 1.0f) p->phase[v] -= 1.0f;
+            }
+        }
+        outs[0][i] = outs[1][i] = sample;
+    }
+}
+
+static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, void *ptr, float opt) {
+    Plugin *p = (Plugin *)e;
+
+    switch (opCode) {
+    case 25: {
+        VstEvents *ve = (VstEvents *)ptr;
+        for (int i = 0; i < ve->numEvents; i++) {
+            VstMidiEvent *evt = (VstMidiEvent *)ve->events[i];
+            if (evt->type != 1) continue; // Only process MIDI type events
+
+            uint8_t status = evt->data[0] & 0xF0, LSB = evt->data[1], MSB = evt->data[2], v;
+
+            if (status == 0x90 && MSB > 0) {
+                for (v = 0; v < 4; v++) {
+                    if (!p->active[v]) break;
+                }
+                if (v == 4) v = 0;
+                
+                p->active[v]   = 1; // Note On
+                p->note[v]     = LSB;
+                p->velocity[v] = MSB;
+                    
+            } else if (status == 0x80 || status == 0x90) {
+                for (int v = 0; v < 4; v++) {
+                    if (p->active[v] && LSB == p->note[v]) {
+                        p->active[v] = 0; // Note Off
+                        break;
+                    }
+                }
+            } else if (status == 0xE0) { // Pitch bend
+                uint16_t pitchBendRaw = (MSB << 7) | LSB;
+                float pitchBendNorm = (pitchBendRaw - 8192) / 8192.0f;
+                p->pitchBend = pitchBendNorm * 12.0f;
+            }
+        }
+        return 1;
+    }
+    case 8:
+        if (idx == 0) strcpy(ptr, "PulseWidth");
+        return idx == 0;
+    case 26: return idx == 0; // effCanBeAutomated
+    case 51: return !strcmp(ptr, "receiveVstMidiEvent");
+    default: return 0;
+    }
+}
+
+AEffect *VSTPluginMain() {
+    Plugin *p = calloc(1, sizeof *p);
+
+    p->eff.magic            = 0x56737450;
+    p->eff.dispatcher       = dispatch;
+    p->eff.processReplacing = process;
+    p->eff.setParameter     = setParam;
+    p->eff.getParameter     = getParam;
+    p->eff.flags            = 16 | 256;
+    p->eff.numOutputs       = 2;
+    p->eff.numParams        = 1;
+
+    p->baseStep = 440.0f / 44100.0f;
+    p->pulseWidth = 0.5f;
+
+    return &p->eff;
+}
