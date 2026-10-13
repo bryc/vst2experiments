@@ -29,7 +29,7 @@ static void process(AEffect *e, float **ins, float **outs, int32_t sampleFrames)
     }
 }
 
-static intptr_t dispatch(AEffect *e, int32_t op, int32_t idx, intptr_t val, void *ptr, float opt) {
+static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, void *ptr, float opt) {
     return 0;
 }
 
