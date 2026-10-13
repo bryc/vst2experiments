@@ -18,10 +18,10 @@ typedef struct {
     float phase;
 } Plugin;
 
-static void process(AEffect *e, float **ins, float **outs, int32_t sampleFrames) {
+static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
     Plugin *p = (Plugin *)e;
     
-    for (int32_t i = 0; i < sampleFrames; i++) {
+    for (int i = 0; i < blockSize; i++) {
         outs[0][i] = outs[1][i] = (p->phase < 0.5f) ? 0.1f : -0.1f;
         
         p->phase += 440.0f / 44100.0f;
