@@ -29,7 +29,7 @@ typedef struct {
 typedef struct {
     AEffect eff;
     float phase, step, baseStep, pitchBend, pulseWidth;
-    uint8_t active, note;
+    int8_t note, vel;
 } Plugin;
 
 static void setParam(AEffect *e, int32_t idx, float val) {
@@ -46,10 +46,9 @@ static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
     Plugin *p = e->object;
 
     for (int i = 0; i < blockSize; i++) {
-        if (p->active) {
+        if (p->vel > 0) {
             p->step = p->baseStep * exp2f((p->note - 69 + p->pitchBend) / 12.0f);
-            outs[0][i] = outs[1][i] = (p->phase < p->pulseWidth) ? 0.1f : -0.1f;
-
+            outs[0][i] = outs[1][i] = ((p->phase < p->pulseWidth) ? 0.1f : -0.1f) * (p->vel / 127.0f);
             p->phase += p->step;
             if (p->phase >= 1.0f) p->phase -= 1.0f;
         } else {
@@ -63,20 +62,18 @@ static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, 
 
     switch (opCode) {
     case 25: {
-        VstEvents *ve = ptr;
-        for (int i = 0; i < ve->numEvents; i++) {
-            VstMidiEvent *evt = (VstMidiEvent *)ve->events[i];
-            if (evt->type != 1) continue; // Only process MIDI type events
+        VstEvents *evt = ptr;
+        for (int i = 0; i < evt->numEvents; i++) {
+            VstMidiEvent *m = evt->events[i];
+            if (m->type != 1) continue; // Only process MIDI type events
+            uint8_t status = m->data[0] & 0xF0, d1 = m->data[1], d2 = m->data[2];
 
-            uint8_t status = evt->data[0] & 0xF0, LSB = evt->data[1], MSB = evt->data[2];
-
-            if (status == 0x90 && MSB > 0) {
-                p->active = 1; // Note On
-                p->note = LSB;
-            } else if ((status == 0x80 || status == 0x90) && LSB == p->note) {
-                p->active = 0; // Note Off
+            if (status == 0x90 && d2 > 0) { // Note On
+                p->note = d1, p->vel = d2;
+            } else if (status == 0x80 || status == 0x90) { // Note Off
+                if (d1 == p->note) p->vel = 0;
             } else if (status == 0xE0) { // Pitch bend
-                uint16_t pitchBendRaw = (MSB << 7) | LSB;
+                uint16_t pitchBendRaw = (d2 << 7) | d1;
                 float pitchBendNorm = (pitchBendRaw - 8192) / 8192.0f;
                 p->pitchBend = pitchBendNorm * 12.0f;
             }
