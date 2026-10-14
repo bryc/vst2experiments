@@ -33,17 +33,17 @@ typedef struct {
 } Plugin;
 
 static void setParam(AEffect *e, int32_t idx, float val) {
-    Plugin *p = (Plugin *)e;
+    Plugin *p = e->object;
     if (idx == 0) p->pulseWidth = val;
 }
 
 static float getParam(AEffect *e, int32_t idx) {
-    Plugin *p = (Plugin *)e;
+    Plugin *p = e->object;
     return idx == 0 ? p->pulseWidth : 0.0f;
 }
 
 static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
-    Plugin *p = (Plugin *)e;
+    Plugin *p = e->object;
 
     for (int i = 0; i < blockSize; i++) {
         if (p->active) {
@@ -59,7 +59,7 @@ static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
 }
 
 static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, void *ptr, float opt) {
-    Plugin *p = (Plugin *)e;
+    Plugin *p = e->object;
 
     switch (opCode) {
     case 25: {
@@ -94,18 +94,19 @@ static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, 
 
 AEffect *VSTPluginMain() {
     Plugin *p = calloc(1, sizeof *p);
-
-    p->eff.magic            = 0x56737450;
-    p->eff.dispatcher       = dispatch;
-    p->eff.processReplacing = process;
-    p->eff.setParameter     = setParam;
-    p->eff.getParameter     = getParam;
-    p->eff.flags            = 16 | 256;
-    p->eff.numOutputs       = 2;
-    p->eff.numParams        = 1;
-
     p->baseStep = 440.0f / 44100.0f;
     p->pulseWidth = 0.5f;
 
-    return &p->eff;
+    AEffect *e = &p->eff;
+    e->object           = p;
+    e->dispatcher       = dispatch;
+    e->processReplacing = process;
+    e->setParameter     = setParam;
+    e->getParameter     = getParam;
+    e->magic            = 0x56737450;
+    e->flags            = 16 | 256;
+    e->numOutputs       = 2;
+    e->numParams        = 1;
+
+    return e;
 }
