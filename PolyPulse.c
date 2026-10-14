@@ -65,7 +65,7 @@ static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, 
 
     switch (opCode) {
     case 25: {
-        VstEvents *ve = (VstEvents *)ptr;
+        VstEvents *ve = ptr;
         for (int i = 0; i < ve->numEvents; i++) {
             VstMidiEvent *evt = (VstMidiEvent *)ve->events[i];
             if (evt->type != 1) continue; // Only process MIDI type events
