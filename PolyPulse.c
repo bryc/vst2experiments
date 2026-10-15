@@ -29,7 +29,7 @@ typedef struct {
 typedef struct {
     AEffect eff;
     float phase[4], step[4], baseStep, pitchBend, pulseWidth;
-    int8_t note[4], vel[4], active[4];
+    int8_t note[4], vel[4];
 } Plugin;
 
 static void setParam(AEffect *e, int32_t idx, float val) {
@@ -49,7 +49,7 @@ static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
         float sample = 0.0f;
 
         for (int v = 0; v < 4; v++) {
-            if (p->active[v]) {
+            if (p->vel[v] > 0) {
                 p->step[v] = p->baseStep * exp2f((p->note[v] - 69 + p->pitchBend) / 12.0f);
                 sample += ((p->phase[v] < p->pulseWidth) ? 0.1f : -0.1f) * (p->vel[v] / 127.0f);
                 p->phase[v] += p->step[v];
@@ -73,15 +73,14 @@ static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, 
 
             if (status == 0x90 && d2 > 0) { // Note On
                 for (v = 0; v < 4; v++) {
-                    if (!p->active[v]) break;
+                    if (!p->vel[v]) break;
                 }
-                if (v == 4) v = 0;
-                p->active[v] = 1, p->note[v] = d1, p->vel[v] = d2;
+                if (v == 4) v = 0; // steal voice 0 if all voices in use
+                p->note[v] = d1, p->vel[v] = d2;
             } else if (status == 0x80 || status == 0x90) { // Note Off
                 for (int v = 0; v < 4; v++) {
-                    if (p->active[v] && d1 == p->note[v]) {
-                        p->active[v] = 0;
-                        break;
+                    if (d1 == p->note[v]) {
+                        p->vel[v] = 0; break;
                     }
                 }
             } else if (status == 0xE0) { // Pitch bend
