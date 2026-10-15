@@ -29,7 +29,7 @@ typedef struct {
 typedef struct {
     AEffect eff;
     float phase[4], step[4], baseStep, pitchBend, pulseWidth;
-    uint8_t active[4], note[4], velocity[4];
+    int8_t note[4], vel[4], active[4];
 } Plugin;
 
 static void setParam(AEffect *e, int32_t idx, float val) {
@@ -51,7 +51,7 @@ static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
         for (int v = 0; v < 4; v++) {
             if (p->active[v]) {
                 p->step[v] = p->baseStep * exp2f((p->note[v] - 69 + p->pitchBend) / 12.0f);
-                sample += ((p->phase[v] < p->pulseWidth) ? 0.1f : -0.1f) * (p->velocity[v] / 127.0f);
+                sample += ((p->phase[v] < p->pulseWidth) ? 0.1f : -0.1f) * (p->vel[v] / 127.0f);
                 p->phase[v] += p->step[v];
                 if (p->phase[v] >= 1.0f) p->phase[v] -= 1.0f;
             }
@@ -65,32 +65,27 @@ static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, 
 
     switch (opCode) {
     case 25: {
-        VstEvents *ve = ptr;
-        for (int i = 0; i < ve->numEvents; i++) {
-            VstMidiEvent *evt = (VstMidiEvent *)ve->events[i];
-            if (evt->type != 1) continue; // Only process MIDI type events
+        VstEvents *evt = ptr;
+        for (int i = 0; i < evt->numEvents; i++) {
+            VstMidiEvent *m = evt->events[i];
+            if (m->type != 1) continue; // Only process MIDI type events
+            uint8_t status = m->data[0] & 0xF0, d1 = m->data[1], d2 = m->data[2], v;
 
-            uint8_t status = evt->data[0] & 0xF0, LSB = evt->data[1], MSB = evt->data[2], v;
-
-            if (status == 0x90 && MSB > 0) {
+            if (status == 0x90 && d2 > 0) { // Note On
                 for (v = 0; v < 4; v++) {
                     if (!p->active[v]) break;
                 }
                 if (v == 4) v = 0;
-                
-                p->active[v]   = 1; // Note On
-                p->note[v]     = LSB;
-                p->velocity[v] = MSB;
-                    
-            } else if (status == 0x80 || status == 0x90) {
+                p->active[v] = 1, p->note[v] = d1, p->vel[v] = d2;
+            } else if (status == 0x80 || status == 0x90) { // Note Off
                 for (int v = 0; v < 4; v++) {
-                    if (p->active[v] && LSB == p->note[v]) {
-                        p->active[v] = 0; // Note Off
+                    if (p->active[v] && d1 == p->note[v]) {
+                        p->active[v] = 0;
                         break;
                     }
                 }
             } else if (status == 0xE0) { // Pitch bend
-                uint16_t pitchBendRaw = (MSB << 7) | LSB;
+                uint16_t pitchBendRaw = (d2 << 7) | d1;
                 float pitchBendNorm = (pitchBendRaw - 8192) / 8192.0f;
                 p->pitchBend = pitchBendNorm * 12.0f;
             }
