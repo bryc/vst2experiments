@@ -49,11 +49,10 @@ static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
     p->step = p->baseStep * exp2f((p->note - 69 + p->pitchBend) / 12.0f);
     for (int i = 0; i < blockSize; i++) {
         float sample = 0.0f;
-        if (p->gain) {
-            sample = (p->phase < p->pulseWidth) ? p->gain : -p->gain;
-            p->phase += p->step;
-            if (p->phase >= 1.0f) p->phase -= 1.0f;
-        }
+        if (p->gain == 0) continue; // Skip inactive voices
+        sample = (p->phase < p->pulseWidth) ? p->gain : -p->gain;
+        p->phase += p->step;
+        if (p->phase >= 1.0f) p->phase -= 1.0f;
         outs[0][i] = outs[1][i] = sample;
     }
 }
