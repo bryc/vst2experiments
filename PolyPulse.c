@@ -47,24 +47,20 @@ static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
     Plugin *p = e->object;
 
     for (int v = 0; v < 4; v++) {
+        if (p->gain[v] == 0) continue; // Skip inactive voices
         p->step[v] = p->baseStep * exp2f((p->note[v] - 69 + p->pitchBend) / 12.0f);
     }
     for (int i = 0; i < blockSize; i++) {
         float sample = 0.0f;
-
         for (int v = 0; v < 4; v++) {
-            if (p->gain) {
-                sample += (p->phase[v] < p->pulseWidth) ? p->gain[v] : -p->gain[v];
-                p->phase[v] += p->step[v];
-                if (p->phase[v] >= 1.0f) p->phase[v] -= 1.0f;
-            }
+            if (p->gain[v] == 0) continue; // Skip inactive voices
+            sample += (p->phase[v] < p->pulseWidth) ? p->gain[v] : -p->gain[v];
+            p->phase[v] += p->step[v];
+            if (p->phase[v] >= 1.0f) p->phase[v] -= 1.0f;
         }
         outs[0][i] = outs[1][i] = sample;
     }
 }
-
-
-
 
 static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, void *ptr, float opt) {
     Plugin *p = e->object;
