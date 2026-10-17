@@ -93,7 +93,7 @@ static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, 
         }
         return 1;
     }
-    case 10: p->baseStep = 440.0f / opt; break;
+    case 10: p->baseStep = 440.0f / opt; return 0;
     case 8:
         if (idx == 0) strcpy(ptr, "PulseWidth");
         return idx == 0;
