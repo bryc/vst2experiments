@@ -28,8 +28,9 @@ typedef struct {
 
 typedef struct {
     AEffect eff;
-    float phase[4], step[4], baseStep, pitchBend, pulseWidth;
-    int8_t note[4], vel[4];
+    float baseStep, baseGain, pitchBend, pulseWidth;
+    float phase[4], step[4], gain[4];
+    int8_t note[4];
 } Plugin;
 
 static void setParam(AEffect *e, int32_t idx, float val) {
@@ -45,13 +46,15 @@ static float getParam(AEffect *e, int32_t idx) {
 static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
     Plugin *p = e->object;
 
+    for (int v = 0; v < 4; v++) {
+        p->step[v] = p->baseStep * exp2f((p->note[v] - 69 + p->pitchBend) / 12.0f);
+    }
     for (int i = 0; i < blockSize; i++) {
         float sample = 0.0f;
 
         for (int v = 0; v < 4; v++) {
-            if (p->vel[v] > 0) {
-                p->step[v] = p->baseStep * exp2f((p->note[v] - 69 + p->pitchBend) / 12.0f);
-                sample += ((p->phase[v] < p->pulseWidth) ? 0.1f : -0.1f) * (p->vel[v] / 127.0f);
+            if (p->gain) {
+                sample += (p->phase[v] < p->pulseWidth) ? p->gain[v] : -p->gain[v];
                 p->phase[v] += p->step[v];
                 if (p->phase[v] >= 1.0f) p->phase[v] -= 1.0f;
             }
@@ -59,6 +62,9 @@ static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
         outs[0][i] = outs[1][i] = sample;
     }
 }
+
+
+
 
 static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, void *ptr, float opt) {
     Plugin *p = e->object;
@@ -73,14 +79,14 @@ static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, 
 
             if (status == 0x90 && d2 > 0) { // Note On
                 for (v = 0; v < 4; v++) {
-                    if (!p->vel[v]) break;
+                    if (!p->gain[v]) break;
                 }
                 if (v == 4) v = 0; // steal voice 0 if all voices in use
-                p->note[v] = d1, p->vel[v] = d2;
+                p->note[v] = d1, p->gain[v] = p->baseGain * d2;
             } else if (status == 0x80 || status == 0x90) { // Note Off
                 for (int v = 0; v < 4; v++) {
                     if (d1 == p->note[v]) {
-                        p->vel[v] = 0; break;
+                        p->gain[v] = 0; break;
                     }
                 }
             } else if (status == 0xE0) { // Pitch bend
@@ -91,6 +97,7 @@ static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, 
         }
         return 1;
     }
+    case 10: p->baseStep = 440.0f / opt; break;
     case 8:
         if (idx == 0) strcpy(ptr, "PulseWidth");
         return idx == 0;
@@ -103,6 +110,7 @@ static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, 
 AEffect *VSTPluginMain() {
     Plugin *p = calloc(1, sizeof *p);
     p->baseStep = 440.0f / 44100.0f;
+    p->baseGain = 0.2f / 127.0f;
     p->pulseWidth = 0.5f;
 
     AEffect *e = &p->eff;
