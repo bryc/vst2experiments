@@ -26,15 +26,15 @@ typedef struct {
     void *events[];
 } VstEvents;
 
-
-static const uint8_t WAVE[32] = {
+static float WAVE[32] = {
     0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0
 };
 
 typedef struct {
     AEffect eff;
-    float phase, step, baseStep, pitchBend, pulseWidth;
-    int8_t note, vel;
+    float baseStep, pitchBend, pulseWidth;
+    float phase, step, gain;
+    int8_t note;
 } Plugin;
 
 static void setParam(AEffect *e, int32_t idx, float val) {
@@ -50,15 +50,14 @@ static float getParam(AEffect *e, int32_t idx) {
 static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
     Plugin *p = e->object;
 
+    p->step = p->baseStep * exp2f((p->note - 69 + p->pitchBend) / 12.0f);
     for (int i = 0; i < blockSize; i++) {
-        if (p->vel > 0) {
-            p->step = p->baseStep * exp2f((p->note - 69 + p->pitchBend) / 12.0f);
-            outs[0][i] = outs[1][i] = WAVE[(int)(p->phase * 32.0f)] * (0.5f / 15.0f) * (p->vel / 127.0f);
-            p->phase += p->step;
-            if (p->phase >= 1.0f) p->phase -= 1.0f;
-        } else {
-            outs[0][i] = outs[1][i] = 0.0f;
-        }
+        float sample = 0.0f;
+        if (p->gain == 0) continue; // Skip inactive voices
+        sample = WAVE[(int)(p->phase * 32.0f)] * p->gain;
+        p->phase += p->step;
+        if (p->phase >= 1.0f) p->phase -= 1.0f;
+        outs[0][i] = outs[1][i] = sample;
     }
 }
 
@@ -74,9 +73,9 @@ static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, 
             uint8_t status = m->data[0] & 0xF0, d1 = m->data[1], d2 = m->data[2];
 
             if (status == 0x90 && d2 > 0) { // Note On
-                p->note = d1, p->vel = d2;
+                p->note = d1, p->gain = (d2 / 127.0f) * 0.8f;
             } else if (status == 0x80 || status == 0x90) { // Note Off
-                if (d1 == p->note) p->vel = 0;
+                if (d1 == p->note) p->gain = 0;
             } else if (status == 0xE0) { // Pitch bend
                 uint16_t pitchBendRaw = (d2 << 7) | d1;
                 float pitchBendNorm = (pitchBendRaw - 8192) / 8192.0f;
@@ -85,6 +84,7 @@ static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, 
         }
         return 1;
     }
+    case 10: p->baseStep = 440.0f / opt; break;
     case 8:
         if (idx == 0) strcpy(ptr, "PulseWidth");
         return idx == 0;
@@ -109,6 +109,9 @@ AEffect *VSTPluginMain() {
     e->flags            = 16 | 256;
     e->numOutputs       = 2;
     e->numParams        = 1;
+
+    float max = 15.0f, scale = 2.0f / max;
+    for (int i = 0; i < 32; i++) WAVE[i] = WAVE[i] * scale - 1.0f;
 
     return e;
 }
