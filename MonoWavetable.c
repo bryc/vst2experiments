@@ -35,6 +35,7 @@ typedef struct {
     float baseStep, pitchBend, pulseWidth;
     float phase, step, gain;
     int8_t note;
+    float wave[32];
 } Plugin;
 
 static void setParam(AEffect *e, int32_t idx, float val) {
@@ -54,7 +55,7 @@ static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
     for (int i = 0; i < blockSize; i++) {
         float sample = 0.0f;
         if (p->gain == 0) continue; // Skip inactive voices
-        sample = WAVE[(int)(p->phase * 32.0f)] * p->gain;
+        sample = p->wave[(int)(p->phase * 32.0f)] * p->gain;
         p->phase += p->step;
         if (p->phase >= 1.0f) p->phase -= 1.0f;
         outs[0][i] = outs[1][i] = sample;
@@ -111,7 +112,7 @@ AEffect *VSTPluginMain() {
     e->numParams        = 1;
 
     float max = 15.0f, scale = 2.0f / max;
-    for (int i = 0; i < 32; i++) WAVE[i] = WAVE[i] * scale - 1.0f;
+    for (int i = 0; i < 32; i++) p->wave[i] = WAVE[i] * scale - 1.0f;
 
     return e;
 }
