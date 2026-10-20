@@ -86,7 +86,7 @@ static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, 
                 p->note[v] = d1, p->gain[v] = (d2 / 127.0f) * 0.3f;
             } else if (status == 0x80 || status == 0x90) { // Note Off
                 for (int v = 0; v < 4; v++) {
-                    if (d1 == p->note[v]) {
+                    if (p->gain[v] && d1 == p->note[v]) {
                         p->gain[v] = 0; break;
                     }
                 }
