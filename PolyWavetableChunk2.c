@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <stdio.h>
 
 typedef struct { /* VST stuff */
     int32_t magic; void *dispatch, *process, *setP, *getP;
@@ -109,6 +110,9 @@ static intptr_t dispatcher(AEffect *e, int32_t opCode, int32_t idx, intptr_t val
         return 1;
     }
     case 10: p->baseStep = 440.0f / opt; return 0; // effSetSampleRate
+    case 7: // effGetParamDisplay
+        if (idx == 0) snprintf(ptr, 8, "%d / %d", p->waveID, p->state.numWaves-1);
+        return 1;
     case 8: // effGetParamName
         if (idx == 0) strcpy(ptr, "WaveIndex");
         return idx == 0;
