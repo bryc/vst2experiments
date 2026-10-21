@@ -123,9 +123,6 @@ static intptr_t dispatcher(AEffect *e, int32_t opCode, int32_t idx, intptr_t val
         memcpy(&p->state, ptr, sizeof p->state);
         normalizeWaves(p);
         return 1;
-    case 12: // effMainsChanged — host suspended / transport stopped
-        if (val == 0) for (int v = 0; v < VOICES; v++) p->gain[v] = 0;
-        return 0;
     default: return 0;
     }
 }
