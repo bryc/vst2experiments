@@ -14,12 +14,12 @@ typedef struct {
 } AEffect;
 
 typedef struct {
-    AEffect eff;
+    AEffect effect;
     float phase;
 } Plugin;
 
 static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
-    Plugin *p = (Plugin *)e;
+    Plugin *p = e->object;
     
     for (int i = 0; i < blockSize; i++) {
         outs[0][i] = outs[1][i] = (p->phase < 0.5f) ? 0.1f : -0.1f;
@@ -36,11 +36,13 @@ static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, 
 AEffect *VSTPluginMain() {
     Plugin *p = calloc(1, sizeof *p);
 
-    p->eff.magic            = 0x56737450;
-    p->eff.dispatcher       = dispatch;
-    p->eff.processReplacing = process;
-    p->eff.flags            = 16 | 256;
-    p->eff.numOutputs       = 2;
+    AEffect *e = &p->effect;
+    e->object           = p;
+    e->dispatcher       = dispatch;
+    e->processReplacing = process;
+    e->magic            = 0x56737450;
+    e->flags            = 16 | 256;
+    e->numOutputs       = 2;
 
-    return &p->eff;
+    return e;
 }
