@@ -107,9 +107,6 @@ static intptr_t dispatch(AEffect *e, int32_t opCode, int32_t idx, intptr_t val, 
         return idx == 0;
     case 26: return idx == 0; // effCanBeAutomated
     case 51: return !strcmp(ptr, "receiveVstMidiEvent"); // effCanDo
-    case 12: // effMainsChanged - transport stop/host suspend
-        if (val == 0) for (int v = 0; v < VOICES; v++) p->gain[v] = 0;
-        return 0;
     default: return 0;
     }
 }
