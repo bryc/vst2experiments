@@ -28,11 +28,12 @@ typedef struct {
     uint8_t bitDepth;
     uint8_t numSamples;
     uint8_t wave[MAX_WAVES][MAX_SAMPLES];
+    float waveIndex;
 } SaveState;
 
 typedef struct {
     AEffect eff;
-    float baseStep, pitchBend, waveIndex;
+    float baseStep, pitchBend;
     float phase[VOICES], step[VOICES], gain[VOICES];
     int8_t note[VOICES], waveID;
     float fwave[MAX_WAVES][MAX_SAMPLES];
@@ -42,14 +43,14 @@ typedef struct {
 static void setParam(AEffect *e, int32_t idx, float val) {
     Plugin *p = e->global;
     if (idx == 0) {
-        p->waveIndex = val;
+        p->state.waveIndex = val;
         p->waveID = val >= 1.0f ? p->state.numWaves - 1 : (int)(val * p->state.numWaves);
     }
 }
 
 static float getParam(AEffect *e, int32_t idx) {
     Plugin *p = e->global;
-    return idx == 0 ? p->waveIndex : 0.0f;
+    return idx == 0 ? p->state.waveIndex : 0.0f;
 }
 
 static void normalizeWaves(Plugin *p) {
@@ -126,6 +127,7 @@ static intptr_t dispatcher(AEffect *e, int32_t opCode, int32_t idx, intptr_t val
         if (!ptr) return 0;
         memcpy(&p->state, ptr, sizeof p->state);
         normalizeWaves(p);
+        p->waveID = p->state.waveIndex >= 1.0f ? p->state.numWaves - 1 : (int)(p->state.waveIndex * p->state.numWaves);
         return 1;
     default: return 0;
     }
@@ -146,7 +148,7 @@ AEffect *VSTPluginMain() {
     e->pluginId  = 0x1337;
 
     p->baseStep = 440.0f / 44100.0f;
-    p->waveIndex = 0.0f;
+    p->state.waveIndex = 0.0f;
     p->state.numWaves = 1;
     p->state.bitDepth = 4;
     p->state.numSamples = 32;
