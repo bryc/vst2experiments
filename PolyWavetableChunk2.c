@@ -111,7 +111,7 @@ static intptr_t dispatcher(AEffect *e, int32_t opCode, int32_t idx, intptr_t val
     }
     case 10: p->baseStep = 440.0f / opt; return 0; // effSetSampleRate
     case 7: // effGetParamDisplay
-        if (idx == 0) snprintf(ptr, 8, "%d / %d", p->waveID, p->state.numWaves-1);
+        if (idx == 0) snprintf(ptr, 24, "%02d / %02d [%d-bit/%d]", p->waveID+1, p->state.numWaves, p->state.bitDepth, p->state.numSamples);
         return 1;
     case 8: // effGetParamName
         if (idx == 0) strcpy(ptr, "WaveIndex");
@@ -147,8 +147,8 @@ AEffect *VSTPluginMain() {
 
     p->baseStep = 440.0f / 44100.0f;
     p->waveIndex = 0.0f;
-	p->state.numWaves = 1;
-	p->state.bitDepth = 4;
+    p->state.numWaves = 1;
+    p->state.bitDepth = 4;
     p->state.numSamples = 32;
     
     uint8_t defWave[32] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0};
