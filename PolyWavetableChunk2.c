@@ -33,11 +33,12 @@ typedef struct {
 
 typedef struct {
     AEffect eff;
+    SaveState state;
+    float fwave[MAX_WAVES][MAX_SAMPLES];
     float baseStep, pitchBend;
     float phase[VOICES], step[VOICES], gain[VOICES];
     int8_t note[VOICES], waveID;
-    float fwave[MAX_WAVES][MAX_SAMPLES];
-    SaveState state;
+    uint32_t age[VOICES], ageClock;
 } Plugin;
     
 static void setParam(AEffect *e, int32_t idx, float val) {
@@ -88,13 +89,12 @@ static intptr_t dispatcher(AEffect *e, int32_t opCode, int32_t idx, intptr_t val
         for (int i = 0; i < evt->numEvents; i++) {
             VstMidiEvent *m = evt->events[i];
             if (m->type != 1) continue; // Only process MIDI type events
-            uint8_t status = m->data[0] & 0xF0, d1 = m->data[1], d2 = m->data[2], v;
+            uint8_t status = m->data[0] & 0xF0, d1 = m->data[1], d2 = m->data[2];
 
             if (status == 0x90 && d2 > 0) { // Note On
-                for (v = 0; v < VOICES; v++) {
-                    if (!p->gain[v]) break;
-                }
-                if (v == VOICES) v = 0; // steal voice 0 if all voices in use
+                uint8_t v, old = 0;
+                for (v = 0; v < VOICES && p->gain[v]; v++) if (p->age[v] < p->age[old]) old = v;
+                if (v == VOICES) v = old; p->age[v] = ++p->ageClock;
                 p->note[v] = d1, p->gain[v] = (d2 / 127.0f) * 0.3f;
             } else if (status == 0x80 || status == 0x90) { // Note Off
                 for (int v = 0; v < VOICES; v++) {
