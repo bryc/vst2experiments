@@ -22,6 +22,11 @@ typedef struct {
 #define MAX_WAVES 64
 #define MAX_SAMPLES 64
 
+enum { P_WAVE, P_ATTACK, P_DECAY, P_SUSTAIN, P_RELEASE,
+NUM_PARAMS }; // keep last
+
+enum { V_IDLE, V_ATK, V_DEC, V_SUS, V_REL }; // env states
+
 typedef struct {
     uint8_t numWaves;
     uint8_t reserved;
@@ -29,29 +34,51 @@ typedef struct {
     uint8_t numSamples;
     uint8_t wave[MAX_WAVES][MAX_SAMPLES];
     float waveIndex;
+    float attackTime, decayTime, sustainLevel, releaseTime;
 } SaveState;
 
 typedef struct {
     AEffect eff;
     SaveState state;
     float fwave[MAX_WAVES][MAX_SAMPLES];
-    float baseStep, pitchBend;
+    float baseStep, pitchBend, sampleRate, atkIncr, decCoef, relCoef;
     float phase[VOICES], step[VOICES], gain[VOICES];
-    int8_t note[VOICES], waveID;
+    int8_t note[VOICES], envStage[VOICES], waveID;
     uint32_t age[VOICES], ageClock;
 } Plugin;
-    
+
+static void updateEnv(Plugin *p, int32_t idx) {
+    if (idx == 1 || idx == -1) { 
+        float n = p->state.attackTime * p->state.attackTime * 10 * p->sampleRate;
+        p->atkIncr = n < 1.0f ? 1.0f : 1.0f / n;
+    }
+    if (idx == 2 || idx == -1) p->decCoef = exp2f(-1.0f / (p->state.decayTime * p->sampleRate));
+    if (idx == 4 || idx == -1) p->relCoef = exp2f(-1.0f / (p->state.releaseTime * p->sampleRate));
+}
+
 static void setParam(AEffect *e, int32_t idx, float val) {
     Plugin *p = e->global;
     if (idx == 0) {
         p->state.waveIndex = val;
-        p->waveID = val >= 1.0f ? p->state.numWaves - 1 : (int)(val * p->state.numWaves);
+        p->waveID = val >= 1.0f ? p->state.numWaves - 1 : (int)(p->state.numWaves * val);
+        return;
     }
+    if (idx == 1) p->state.attackTime = val;
+    if (idx == 2) p->state.decayTime = val;
+    if (idx == 3) p->state.sustainLevel = val;
+    if (idx == 4) p->state.releaseTime = val;
+    updateEnv(p, idx);
 }
 
 static float getParam(AEffect *e, int32_t idx) {
     Plugin *p = e->global;
-    return idx == 0 ? p->state.waveIndex : 0.0f;
+    switch (idx) {
+        case 0: return p->state.waveIndex;
+        case 1: return p->state.attackTime;
+        case 2: return p->state.decayTime;
+        case 3: return p->state.sustainLevel;
+        case 4: return p->state.releaseTime;
+    }
 }
 
 static void normalizeWaves(Plugin *p) {
@@ -110,14 +137,22 @@ static intptr_t dispatcher(AEffect *e, int32_t opCode, int32_t idx, intptr_t val
         }
         return 1;
     }
-    case 10: p->baseStep = 440.0f / opt; return 0; // effSetSampleRate
+    case 10: p->sampleRate = opt; p->baseStep = 440.0f / opt; updateEnv(p, -1); return 0; // effSetSampleRate
     case 7: // effGetParamDisplay
         if (idx == 0) snprintf(ptr, 24, "%02d / %02d [%d-bit/%d]", p->waveID+1, p->state.numWaves, p->state.bitDepth, p->state.numSamples);
-        return 1;
+        if (idx == 1) snprintf(ptr, 24, "%.2f s", p->state.attackTime * 11.0f);
+        if (idx == 2) snprintf(ptr, 24, "%.1f s", p->state.decayTime * 11.0f);
+        if (idx == 3) snprintf(ptr, 24, "%.0f%%", p->state.sustainLevel * 100.0f);
+        if (idx == 4) snprintf(ptr, 24, "%.1f s", p->state.releaseTime * 11.0f);
+        return 0;
     case 8: // effGetParamName
         if (idx == 0) strcpy(ptr, "WaveIndex");
-        return idx == 0;
-    case 26: return idx == 0; // effCanBeAutomated
+        if (idx == 1) strcpy(ptr, "Attack");
+        if (idx == 2) strcpy(ptr, "Decay");
+        if (idx == 3) strcpy(ptr, "Sustain");
+        if (idx == 4) strcpy(ptr, "Release");
+        return idx < NUM_PARAMS;
+    case 26: return idx < NUM_PARAMS; // effCanBeAutomated
     case 51: return !strcmp(ptr, "receiveVstMidiEvent"); // effCanDo
     case 5:  strcpy(ptr, "WavE"); return 1; // effGetProgramName
     case 23: // effGetChunk: SAVE
@@ -128,6 +163,7 @@ static intptr_t dispatcher(AEffect *e, int32_t opCode, int32_t idx, intptr_t val
         memcpy(&p->state, ptr, sizeof p->state);
         normalizeWaves(p);
         p->waveID = p->state.waveIndex >= 1.0f ? p->state.numWaves - 1 : (int)(p->state.waveIndex * p->state.numWaves);
+        updateEnv(p, -1);
         return 1;
     default: return 0;
     }
@@ -144,14 +180,20 @@ AEffect *VSTPluginMain() {
     e->magic     = 0x56737450;
     e->flags     = 16 | 32 | 256;
     e->numOuts   = 2;
-    e->numParams = 1;
+    e->numParams = NUM_PARAMS;
     e->pluginId  = 0x1337;
 
-    p->baseStep = 440.0f / 44100.0f;
+    p->sampleRate = 44100.0f;
+    p->baseStep = 440.0f / p->sampleRate;
     p->state.waveIndex = 0.0f;
     p->state.numWaves = 1;
     p->state.bitDepth = 4;
     p->state.numSamples = 32;
+    p->state.attackTime = 0.0f;
+    p->state.decayTime = 0.0f;
+    p->state.sustainLevel = 1.0f;
+    p->state.releaseTime = 0.0f;
+    updateEnv(p, -1);
     
     uint8_t defWave[32] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0};
     memcpy(p->state.wave, defWave, sizeof defWave);
