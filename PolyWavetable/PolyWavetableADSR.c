@@ -107,6 +107,13 @@ static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
             if (p->phase[v] >= 1.0f) p->phase[v] -= 1.0f;
         }
         outs[0][i] = outs[1][i] = sample / OS;
+        for (int v = 0; v < VOICES; v++) {
+            if (!p->envStage[v]) continue;
+            if (p->envStage[v] == V_ATK && (p->envGain[v] += p->atkIncr) >= p->vel[v]) p->envGain[v] = p->vel[v], p->envStage[v] = V_DEC;
+            if (p->envStage[v] == V_DEC && (p->envGain[v] *= p->decCoef) < p->state.sustainLevel * p->vel[v])
+                p->envGain[v] = p->state.sustainLevel * p->vel[v], p->envStage[v] = V_SUS;
+            if (p->envStage[v] == V_REL && (p->envGain[v] *= p->relCoef) < 0.0001f) p->envGain[v] = 0, p->envStage[v] = V_IDLE;
+        }
     }
 }
 
