@@ -41,10 +41,13 @@ typedef struct {
     AEffect eff;
     SaveState state;
     float fwave[MAX_WAVES][MAX_SAMPLES];
-    float baseStep, pitchBend, sampleRate, atkIncr, decCoef, relCoef;
-    float phase[VOICES], step[VOICES], gain[VOICES];
-    int8_t note[VOICES], envStage[VOICES], waveID;
+    float baseStep, pitchBend, sampleRate;
+    float phase[VOICES], step[VOICES];
+    int8_t note[VOICES], waveID;
     uint32_t age[VOICES], ageClock;
+    // ADSR
+    float atkIncr, decCoef, relCoef, envGain[VOICES], vel[VOICES];
+    int8_t envStage[VOICES];
 } Plugin;
 
 static void updateEnv(Plugin *p, int32_t idx) {
@@ -92,14 +95,14 @@ static void process(AEffect *e, float **ins, float **outs, int32_t blockSize) {
     Plugin *p = e->global;
 
     for (int v = 0; v < VOICES; v++) {
-        if (p->gain[v] == 0) continue; // Skip inactive voices
+        if (p->envStage[v] == V_IDLE) continue; // Skip inactive voices
         p->step[v] = p->baseStep * exp2f((p->note[v] - 69 + p->pitchBend) / 12.0f) / OS;
     }
     for (int i = 0; i < blockSize; i++) {
         float sample = 0.0f;
         for (int o = 0; o < OS; o++) for (int v = 0; v < VOICES; v++) {
-            if (p->gain[v] == 0) continue; // Skip inactive voices
-            sample += p->fwave[p->waveID][(int)(p->phase[v] * p->state.numSamples)] * p->gain[v];
+            if (p->envStage[v] == V_IDLE) continue; // Skip inactive voices
+            sample += p->fwave[p->waveID][(int)(p->phase[v] * p->state.numSamples)] * p->envGain[v];
             p->phase[v] += p->step[v];
             if (p->phase[v] >= 1.0f) p->phase[v] -= 1.0f;
         }
@@ -120,13 +123,17 @@ static intptr_t dispatcher(AEffect *e, int32_t opCode, int32_t idx, intptr_t val
 
             if (status == 0x90 && d2 > 0) { // Note On
                 uint8_t v, old = 0;
-                for (v = 0; v < VOICES && p->gain[v]; v++) if (p->age[v] < p->age[old]) old = v;
+                for (v = 0; v < VOICES && p->envStage[v]; v++) if (p->age[v] < p->age[old]) old = v;
                 if (v == VOICES) v = old; p->age[v] = ++p->ageClock;
-                p->note[v] = d1, p->gain[v] = (d2 / 127.0f) * 0.3f;
+                
+                p->note[v] = d1;
+                p->vel[v] = (d2 / 127.0f) * 0.3f;
+                p->envStage[v] = V_ATK, p->envGain[v] = 0.0f;
+                
             } else if (status == 0x80 || status == 0x90) { // Note Off
                 for (int v = 0; v < VOICES; v++) {
-                    if (p->gain[v] && d1 == p->note[v]) {
-                        p->gain[v] = 0; break;
+                    if (p->envStage[v] > V_IDLE && p->envStage[v] != V_REL && d1 == p->note[v]) {
+                        p->envStage[v] = V_REL; break;
                     }
                 }
             } else if (status == 0xE0) { // Pitch bend
